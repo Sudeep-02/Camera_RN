@@ -9,20 +9,20 @@ import {
 } from "react-native";
 import { Colors } from "@/constants/Colors";
 
-interface ObscuraButtonProps {
+interface CameraButtonProps {
   onPress: () => void;
   title?: string;
   iconName?: ComponentProps<typeof Ionicons>["name"];
   containerStyle?: StyleProp<ViewStyle>;
   iconSize?: number;
 }
-export default function ObscuraButton({
+export default function CameraButton({
   onPress,
   iconName,
   title,
   containerStyle,
   iconSize,
-}: ObscuraButtonProps) {
+}: CameraButtonProps) {
   return (
     <TouchableOpacity
       onPress={onPress}

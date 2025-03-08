@@ -1,46 +1,230 @@
-import { ThemedText } from "@/components/ThemedText";
-import { Redirect, useRouter } from "expo-router";
+import * as React from "react";
+import CameraButton from "@/components/CameraButton";
 import {
+  StyleSheet,
   Platform,
+  View,
   SafeAreaView,
   StatusBar,
-  StyleSheet,
-  View,
+  TouchableHighlight,
+  Linking,
+  Text,
 } from "react-native";
 import {
   Camera,
   useCameraDevice,
+  useCameraDevices,
   useCameraPermission,
 } from "react-native-vision-camera";
+import { Redirect, useRouter } from "expo-router";
+import { ThemedText } from "@/components/ThemedText";
+import { FontAwesome5 } from "@expo/vector-icons";
+import ZoomControls from "@/components/ZoomControls";
+import { BlurView } from "expo-blur";
+import ExposureControls from "@/components/ExposureControls";
+import * as MediaLibrary from "expo-media-library";
 
 export default function HomeScreen() {
   const { hasPermission } = useCameraPermission();
   const microphonePermission = Camera.getMicrophonePermissionStatus();
-  const redirectToPermissions =
-    !hasPermission || microphonePermission == "not-determined";
+  const [showZoomControls, setShowZoomControls] = React.useState(false);
+  const [showExposureControls, setShowExposureControls] = React.useState(false);
 
-  const device = useCameraDevice("front");
-  const router = useRouter;
+  const camera = React.useRef<Camera>(null);
+  const devices = useCameraDevices();
+  const [cameraPosition, setCameraPosition] = React.useState<"front" | "back">(
+    "back"
+  );
+  const device = useCameraDevice(cameraPosition);
+  const [zoom, setZoom] = React.useState(device?.neutralZoom);
+  const [exposure, setExposure] = React.useState(0);
+  const [flash, setFlash] = React.useState<"off" | "on">("off");
+  const [torch, setTorch] = React.useState<"off" | "on">("off");
+  const redirectToPermissions =
+    !hasPermission || microphonePermission === "not-determined";
+
+  const router = useRouter();
+
+  const takePicture = async () => {
+    try {
+      if (camera.current == null) throw new Error("Camera ref is null!");
+
+      console.log("Taking photo...");
+      const photo = await camera.current.takePhoto({
+        flash: flash,
+        enableShutterSound: false,
+      });
+
+      // Request permission to access media library
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") {
+        console.error("Permission to access media library denied!");
+        return;
+      }
+
+      // Save photo to gallery
+      await MediaLibrary.saveToLibraryAsync(photo.path);
+      console.log("✅ Photo saved to gallery!");
+
+      // router.push({
+      //   pathname: "/media",
+      //   params: { media: photo.path, type: "photo" },
+      // });
+      // onMediaCaptured(photo, 'photo')
+    } catch (e) {
+      console.error("Failed to take photo!", e);
+    }
+  };
 
   if (redirectToPermissions) return <Redirect href={"/permissions"} />;
+  if (!device) return <></>;
+
   return (
     <>
+      <StatusBar barStyle={"light-content"} />
       <SafeAreaView style={styles.container}>
         <View style={{ flex: 2, borderRadius: 10, overflow: "hidden" }}>
-          <Camera style={{ flex: 1 }} device={device} isActive />
+          <Camera
+            ref={camera}
+            style={{ flex: 1 }}
+            photo={true}
+            zoom={zoom}
+            device={device!}
+            isActive={true}
+            resizeMode="cover"
+            preview={true}
+            exposure={exposure}
+            torch={torch}
+            // fps={60}
+          />
+          <BlurView
+            intensity={100}
+            tint="dark"
+            style={{
+              flex: 1,
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              padding: 10,
+            }}
+            experimentalBlurMethod="dimezisBlurView"
+          >
+            <Text
+              style={{
+                color: "white",
+              }}
+            >
+              Exposure: {exposure} | Zoom: x{zoom}
+            </Text>
+          </BlurView>
         </View>
 
-        <View style={{ flex: 1 }}>
-          <View style={{ flex: 0.7 }}>
-            <ThemedText>Max FPS : {device?.formats[0].maxFps}</ThemedText>
-            <ThemedText>
-              Width : {device?.formats[0].photoWidth}
-              Height : {device?.formats[0].photoHeight}
-            </ThemedText>
-            <ThemedText>Camera: {device?.name}</ThemedText>
+        {/* <ZoomControls
+          setZoom={setZoom}
+          setShowZoomControls={setShowZoomControls}
+          zoom={zoom}
+        /> */}
+
+        {showZoomControls ? (
+          <ZoomControls
+            setZoom={setZoom}
+            setShowZoomControls={setShowZoomControls}
+            zoom={zoom ?? 1}
+          />
+        ) : showExposureControls ? (
+          <ExposureControls
+            setExposure={setExposure}
+            setShowExposureControls={setShowExposureControls}
+            exposure={exposure}
+          />
+        ) : (
+          <View style={{ flex: 1, padding: 10 }}>
+            {/* Top section */}
+            <View
+              style={{
+                flex: 0.7,
+              }}
+            >
+              <ThemedText>Max FPS: {device.formats[0].maxFps}</ThemedText>
+              <ThemedText>
+                Width: {device.formats[0].photoWidth} Height:{" "}
+                {device.formats[0].photoHeight}
+              </ThemedText>
+              <ThemedText>Camera: {device.name}</ThemedText>
+            </View>
+
+            {/* Middle section */}
+            <View
+              style={{
+                flex: 0.7,
+                flexDirection: "row",
+                justifyContent: "space-evenly",
+              }}
+            >
+              <CameraButton
+                iconName={torch === "on" ? "flashlight" : "flashlight-outline"}
+                onPress={() => setTorch((t) => (t === "off" ? "on" : "off"))}
+                containerStyle={{ alignSelf: "center" }}
+              />
+              <CameraButton
+                iconName={
+                  flash === "on" ? "flash-outline" : "flash-off-outline"
+                }
+                onPress={() => setFlash((f) => (f === "off" ? "on" : "off"))}
+                containerStyle={{ alignSelf: "center" }}
+              />
+              <CameraButton
+                iconName="camera-reverse-outline"
+                onPress={() =>
+                  setCameraPosition((p) => (p === "back" ? "front" : "back"))
+                }
+                containerStyle={{ alignSelf: "center" }}
+              />
+              <CameraButton
+                iconName="image-outline"
+                onPress={() => {
+                  const link = Platform.select({
+                    ios: "photos-redirect://",
+                    android: "content://media/external/images/media",
+                  });
+                  Linking.openURL(link!);
+                }}
+                containerStyle={{ alignSelf: "center" }}
+              />
+              <CameraButton
+                iconName="settings-outline"
+                onPress={() => router.push("/_sitemap")}
+                containerStyle={{ alignSelf: "center" }}
+              />
+            </View>
+
+            {/* Botton section */}
+            <View
+              style={{
+                flex: 1.1,
+                flexDirection: "row",
+                justifyContent: "space-evenly",
+                alignItems: "center",
+              }}
+            >
+              <CameraButton
+                iconSize={40}
+                title="+/-"
+                onPress={() => setShowZoomControls((s) => !s)}
+                containerStyle={{ alignSelf: "center" }}
+              />
+              <TouchableHighlight onPress={takePicture}>
+                <FontAwesome5 name="dot-circle" size={55} color={"white"} />
+              </TouchableHighlight>
+              <CameraButton
+                iconSize={40}
+                title="1x"
+                onPress={() => setShowExposureControls((s) => !s)}
+                containerStyle={{ alignSelf: "center" }}
+              />
+            </View>
           </View>
-          <View style={{ flex: 0.7 }}></View>
-        </View>
+        )}
       </SafeAreaView>
     </>
   );
